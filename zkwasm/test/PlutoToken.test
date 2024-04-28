@@ -1,0 +1,18 @@
+Instructions to generate PlutoToken.wasm
+test.sol
+'''
+pragma solidity ^0.8.4;
+
+import "./ERC20.sol";
+
+contract PlutoToken is ERC20 {
+    constructor() ERC20("PlutoToken", "PTK") {
+        _mint(msg.sender, 1000 * 10 ** decimals());
+    }
+}
+'''
+
+Put it under "openzeppelin-contracts/contracts/token/ERC20/" compile with:
+"solang compile --target polkadot test.sol"
+
+PlutoToken.wasm will be generated at the same directory. 

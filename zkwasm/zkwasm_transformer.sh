@@ -6,18 +6,76 @@
 
 # link input wasm with the prebuilt solang wasm to resolve dependency
 link_wasm() {
-  wasm-ld $1 dep.wasm -o tmp.wasm
+  # use wat2wasm to enable relocation, otherwise will encounter relocation error during linking
+  wasm2wat $input_wasm -o tmp.wat
+  wat2wasm tmp.wat -o tmp.wasm -r
+  rm tmp.wat
+
+  #link input wasm with seal.wasm to resolve the dependencies created by solang
+  wasm-ld tmp.wasm seal.wasm -o tmp.wasm -shared
+}
+
+# get the number of params and return for the entry function
+get_params_return() {
+  entry_func_def=$(grep -r "^  (func \$"$entry_function tmp.wat) 
+  count_i32=$(echo "$entry_func_def" | tr " " "\n" | grep -c "i32")
+  count_result=$(echo "$entry_func_def" | tr " " "\n" | grep -c "result")
+  local res=("$count_i32" "$count_result")
+  echo ${res[@]}
 }
 
 # insert zkmain function with provided entry function
 generate_zkmain() {
-  :
+  wasm2wat tmp.wasm -o tmp.wat
+  # get the function params and return
+  res=$(get_params_return "tmp.wat" $entry_function)
+  res=($res)
+  if [ ${res[1]} != 1 ]
+  then
+    echo "Error: entry function must return i32\n"
+    exit 1
+  fi
+
+  # remove import memory and global created by relocation and the polkadot target to avoid conflict
+  $(sed -i 's/^  (import \"env\" \"memory\".*//' tmp.wat)
+  $(sed -i 's/^  (import \"env\" \"__memory_base\".*//' tmp.wat)
+  $(sed -i 's/^  (import \"env\" \"__table_base\".*//' tmp.wat)
+  $(sed -i 's/^  (export \"__stack_pointer\" (global 2))//' tmp.wat)
+  $(sed -i 's/^  (import \"env\" \"memory\".*//' tmp.wat)
+  $(sed -i 's/.*memory.size.*/i32.const 1/' tmp.wat)
+
+  # insert wasm_input as input to the entry function
+  insert_point=$(sed -n '/^  (func \$zkmain/{=;q;}' tmp.wat)
+  insert_point=$((insert_point+1))
+  # create wasm_input for the params of the entry function
+  for i in $(seq 2 ${res[0]})
+  do
+    $(sed -i "${insert_point}i i32.wrap_i64" tmp.wat)
+    $(sed -i "${insert_point}i call \$wasm_input" tmp.wat)
+    $(sed -i "${insert_point}i i32.const 1" tmp.wat)
+    insert_point=$((insert_point+3))
+  done
+  # invoke entry function in the zkmain
+  $(sed -i "${insert_point}i call \$$entry_function)" tmp.wat)
+  insert_point=$((insert_point+1))
+  $(sed -i "${insert_point}d" tmp.wat)
+  $(sed -i "${insert_point}i (memory (;0;) 2)" tmp.wat)
+  insert_point=$((insert_point+1))
+  $(sed -i "${insert_point}i (export \"memory\" (memory 0))" tmp.wat)
+  
+  # create output wasm
+  output_wasm=${input_wasm//\.wasm/_zk\.wasm}
+  wat2wasm tmp.wat -o $output_wasm
+  rm tmp.wat
+  echo "Transformed wasm file: $output_wasm"
+}
+
+main() {
+  link_wasm
+  generate_zkmain
 }
 
 input_wasm=$1
 entry_function=$2
 
-main() {
-  link_wasm()
-  generate_zkmain()
-}
+main

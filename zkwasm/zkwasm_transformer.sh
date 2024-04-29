@@ -35,14 +35,15 @@ generate_zkmain() {
     echo "Error: entry function must return i32\n"
     exit 1
   fi
+  echo "$((res[0]-1)) public input is needed for single-prove"
 
   # remove import memory and global created by relocation and the polkadot target to avoid conflict
-  $(sed -i 's/^  (import \"env\" \"memory\".*//' tmp.wat)
-  $(sed -i 's/^  (import \"env\" \"__memory_base\".*//' tmp.wat)
-  $(sed -i 's/^  (import \"env\" \"__table_base\".*//' tmp.wat)
-  $(sed -i 's/^  (export \"__stack_pointer\" (global 2))//' tmp.wat)
-  $(sed -i 's/^  (import \"env\" \"memory\".*//' tmp.wat)
-  $(sed -i 's/.*memory.size.*/i32.const 1/' tmp.wat)
+  $(sed -i='' 's/^  (import \"env\" \"memory\".*//' tmp.wat)
+  $(sed -i='' 's/^  (import \"env\" \"__memory_base\".*//' tmp.wat)
+  $(sed -i='' 's/^  (import \"env\" \"__table_base\".*//' tmp.wat)
+  $(sed -i='' 's/^  (export \"__stack_pointer\" (global 2))//' tmp.wat)
+  $(sed -i='' 's/^  (import \"env\" \"memory\".*//' tmp.wat)
+  $(sed -i='' 's/.*memory.size.*/i32.const 1/' tmp.wat)
 
   # insert wasm_input as input to the entry function
   insert_point=$(sed -n '/^  (func \$zkmain/{=;q;}' tmp.wat)
@@ -50,18 +51,18 @@ generate_zkmain() {
   # create wasm_input for the params of the entry function
   for i in $(seq 2 ${res[0]})
   do
-    $(sed -i "${insert_point}i i32.wrap_i64" tmp.wat)
-    $(sed -i "${insert_point}i call \$wasm_input" tmp.wat)
-    $(sed -i "${insert_point}i i32.const 1" tmp.wat)
+    $(sed -i='' "${insert_point}i i32.wrap_i64" tmp.wat)
+    $(sed -i='' "${insert_point}i call \$wasm_input" tmp.wat)
+    $(sed -i='' "${insert_point}i i32.const 1" tmp.wat)
     insert_point=$((insert_point+3))
   done
   # invoke entry function in the zkmain
-  $(sed -i "${insert_point}i call \$$entry_function)" tmp.wat)
+  $(sed -i='' "${insert_point}i call \$$entry_function)" tmp.wat)
   insert_point=$((insert_point+1))
-  $(sed -i "${insert_point}d" tmp.wat)
-  $(sed -i "${insert_point}i (memory (;0;) 2)" tmp.wat)
+  $(sed -i='' "${insert_point}d" tmp.wat)
+  $(sed -i='' "${insert_point}i (memory (;0;) 2)" tmp.wat)
   insert_point=$((insert_point+1))
-  $(sed -i "${insert_point}i (export \"memory\" (memory 0))" tmp.wat)
+  $(sed -i='' "${insert_point}i (export \"memory\" (memory 0))" tmp.wat)
   
   # create output wasm
   output_wasm=${input_wasm//\.wasm/_zk\.wasm}
